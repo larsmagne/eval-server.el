@@ -55,20 +55,18 @@
       (setq client (cons proc ""))
       (push client eval-server-clients))
     (let ((message (concat (cdr client) string)))
-      (setcdr client (or (eval-server-dispatch proc message functions) "")))))
+      (if (string-match "\n\\'" message)
+	  (progn
+	    (eval-server-dispatch proc message functions)
+	    (delete-process (car client))
+	    (eval-server-remove proc))
+	(setcdr client message)))))
 
 (defun eval-server-dispatch (proc message functions)
-  (loop for command in (with-temp-buffer
-			 (insert message)
-			 (goto-char (point-min))
-			 (loop for start = (point)
-			       while (search-forward "\n" (point-max) t)
-			       collect (buffer-substring start (point))))
-	;; Return the last partial line.
-	if (not (string-match "\n\\'" command))
-	do (return command)
-	else
-	do (eval-server-dispatch-1 proc command functions)))
+  ;; Return the last partial line.
+  (if (not (string-match "\n\\'" message))
+      message
+    (eval-server-dispatch-1 proc message functions)))
 
 (defun eval-server-dispatch-1 (proc command functions)
   (let ((command (ignore-errors (car (read-from-string command)))))
@@ -76,7 +74,8 @@
 	     (consp command)
 	     (memq (car command) functions))
 	(eval-server-reply proc (apply #'funcall command))
-      (eval-server-reply proc (format "Invalid command %s" command)))))
+      (eval-server-reply proc (format "Invalid command %s" command)))
+    (process-send-eof proc)))
 
 (defun eval-server-reply (proc form)
   (process-send-string
@@ -88,9 +87,24 @@
     "\n")))
 
 (defun eval-server-sentinel (proc message)
-  (message "%s" message)
   (when (string= message "connection broken by remote peer\n")
-    (setq eval-server-clients (assq-delete-all proc eval-server-clients))))
+    (eval-server-remove proc)))
+
+(defun eval-server-remove (proc)
+  (setq eval-server-clients (assq-delete-all proc eval-server-clients)))
+
+(defun eval-at (host port form)
+  (with-temp-buffer
+    (let ((proc
+	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
+				host port)))
+      (set-process-sentinel proc (lambda (&rest _)))
+      (process-send-string proc (format "%S\n" form))
+      (while (and (accept-process-output proc 0 10)
+		  (process-live-p proc)
+		  (not (search-forward "\n" nil t))))
+      (delete-process proc)
+      (buffer-string))))
 
 (provide 'eval-server)
 
