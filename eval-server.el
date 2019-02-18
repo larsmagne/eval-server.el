@@ -23,7 +23,7 @@
 
 ;; Put the following in your .emacs:
 
-;; (push "~/src/eval-server" load-path)
+;; (push "~/src/eval-server.el" load-path)
 ;; (autoload 'eval-server-start "eval-server" nil t)
 
 ;;; Code:
