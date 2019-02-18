@@ -28,22 +28,24 @@
 
 ;;; Code:
 
-(defvar eval-server-process nil)
+(defvar eval-server-processes nil)
 
 (defun eval-server-start (port functions)
-  (when eval-server-process
-    (delete-process eval-server-process)
-    (setq eval-server-process nil))
-  (setq eval-server-process
-	(make-network-process :name "eval-server"
-			      :buffer (get-buffer-create "*eval-server*")
-			      :family 'ipv4
-			      :service port
-			      :filter (lambda (proc string)
-					(eval-server-filter
-					 proc string functions))
-			      :sentinel 'eval-server-sentinel
-			      :server t))
+  (let ((server (assq port eval-server-processes)))
+    (when server
+      (delete-process (cdr server))
+      (setq eval-server-processes (delq server eval-server-processes))))
+  (push (cons port
+	      (make-network-process :name "eval-server"
+				    :buffer (get-buffer-create "*eval-server*")
+				    :family 'ipv4
+				    :service port
+				    :filter (lambda (proc string)
+					      (eval-server-filter
+					       proc string functions))
+				    :sentinel 'eval-server-sentinel
+				    :server t))
+	eval-server-processes)
   (message "Listening on port %s" port))
 
 (defvar eval-server-clients nil)
