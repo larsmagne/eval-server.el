@@ -49,7 +49,6 @@
 (defvar eval-server-clients nil)
 
 (defun eval-server-filter (proc string functions)
-  (message "Got '%s'" string)
   (let ((client (assq proc eval-server-clients)))
     (unless client
       (setq client (cons proc ""))
@@ -100,11 +99,13 @@
 				host port)))
       (set-process-sentinel proc (lambda (&rest _)))
       (process-send-string proc (format "%S\n" form))
-      (while (and (accept-process-output proc 0 10)
-		  (process-live-p proc)
-		  (not (search-forward "\n" nil t))))
+      (while (and (process-live-p proc)
+		  (not (search-forward "\n" nil t)))
+	(accept-process-output proc 0 10))
       (delete-process proc)
-      (buffer-string))))
+      (goto-char (point-min))
+      (and (plusp (buffer-size))
+	   (read (current-buffer))))))
 
 (provide 'eval-server)
 
