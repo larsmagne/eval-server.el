@@ -12,13 +12,11 @@ fi
 
 iv=$(echo $RANDOM | md5sum | cut -d' ' -f1)
 iv=$(printf %16.16s $iv)
-ivhex=$(hexdump -e '"%X"' <<< "$iv")
+ivhex=$(echo -n $iv | xxd -c 256 -pu)
 
 secret=$(grep "machine $name " ~/.authinfo | sed 's/^.*password //')
 secret=$(printf %32s "$secret")
-secrethex=$(xxd -c 256 -pu <<< "$secret")
-
-echo "'$secrethex' '$ivhex'"
+secrethex=$(echo -n "$secret" | xxd -c 256 -pu)
 
 message=$(echo "$form" |\
 	      openssl enc -aes-256-cbc -nosalt -K $secrethex -iv $ivhex |\
@@ -29,4 +27,3 @@ ivbase=$(echo -n $iv | base64)
 
 echo "(:iv \"$ivbase\" :length $length :message \"$message\")" |\
     nc "$host" "$port"
-
