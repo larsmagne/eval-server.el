@@ -40,6 +40,8 @@
 				    :buffer (get-buffer-create "*eval-server*")
 				    :family 'ipv4
 				    :service port
+				    :host (system-name)
+				    :filter-multibyte nil
 				    :filter (lambda (proc string)
 					      (eval-server-filter
 					       proc string functions))
@@ -74,7 +76,8 @@
     (if (and command
 	     (consp command)
 	     (memq (car command) functions))
-	(eval-server-reply proc (apply #'funcall command))
+	(eval-server-reply proc (ignore-errors
+				  (apply #'funcall command)))
       (eval-server-reply proc (format "Invalid command %s" command)))
     (process-send-eof proc)))
 
@@ -96,11 +99,15 @@
 
 (defun eval-at (host port form)
   (with-temp-buffer
+    (set-buffer-multibyte nil)
     (let ((proc
 	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
 				host port)))
       (set-process-sentinel proc (lambda (&rest _)))
-      (process-send-string proc (format "%S\n" form))
+      (with-temp-buffer
+	(set-buffer-multibyte nil)
+	(insert (format "%S\n" form))
+	(process-send-region proc (point-min) (point-max)))
       (while (and (process-live-p proc)
 		  (not (search-forward "\n" nil t)))
 	(accept-process-output proc 0 10))
@@ -108,6 +115,47 @@
       (goto-char (point-min))
       (and (plusp (buffer-size))
 	   (read (current-buffer))))))
+
+(defun eval-server-pad (s length)
+  "Pad string S to a modulo of LENGTH."
+  (concat (make-string (- length (mod (length s) length)) ?\s)
+	  s))
+
+(defun eval-server--encrypt (message secret cipher)
+  "Encrypt MESSAGE using CIPHER with SECRET.
+The encrypted result and the IV are returned."
+  (let ((cdata (cdr (assq cipher (gnutls-ciphers)))))
+    (unless cdata
+      (error "Cipher %s isn't supported" cipher))
+    (gnutls-symmetric-encrypt
+     cipher
+     (eval-server-pad secret (plist-get cdata :cipher-keysize))
+     (list 'iv-auto (plist-get cdata :cipher-ivsize))
+     (eval-server-pad message (plist-get cdata :cipher-keysize)))))
+
+(defun eval-server--decrypt (encrypted secret cipher iv)
+  (let ((cdata (cdr (assq cipher (gnutls-ciphers)))))
+    (unless cdata
+      (error "Cipher %s isn't supported" cipher))
+    (gnutls-symmetric-decrypt
+     cipher
+     (gnutls-pad secret (plist-get cdata :cipher-keysize))
+     iv
+     encrypted)))
+
+(defun eval-server--encrypt-form (server port form)
+  (let* ((auth (car (auth-source-search :max 1 :port port :host server)))
+	 (message 
+	  (with-temp-buffer
+	    (set-buffer-multibyte nil)
+	    (insert (format "%S\n" form))
+	    (buffer-string)))
+	 (encrypted
+	  (eval-server--encrypt
+	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
+    (list :iv (base64-encode-string (cadr encrypted))
+	  :length (length message)
+	  :message (base64-encode-string (car encrypted)))))
 
 (provide 'eval-server)
 
