@@ -75,22 +75,20 @@
   (let ((command (eval-server--decrypt-command
 		  auth (ignore-errors
 			 (car (read-from-string command))))))
-    (if (and command
-	     (consp command)
-	     (memq (car command) functions))
-	(eval-server-reply proc (ignore-errors
-				  (apply #'funcall command)))
-      (eval-server-reply proc (format "Invalid command %s" command)))
+    (eval-server-reply
+     proc auth 
+     (if (and command
+	      (consp command)
+	      (memq (car command) functions))
+	 (ignore-errors
+	   (apply #'funcall command))
+       (format "Invalid command %s" command)))
     (process-send-eof proc)))
 
-(defun eval-server-reply (proc form)
-  (process-send-string
-   proc
-   (concat
-    (if (stringp form)
-	form
-      (format "%S" form))
-    "\n")))
+(defun eval-server-reply (proc auth form)
+  (with-temp-buffer
+    (insert (format "%S\n" (eval-server--encrypt-form auth form)))
+    (process-send-region proc (point-min) (point-max))))
 
 (defun eval-server-sentinel (proc message)
   (when (string= message "connection broken by remote peer\n")
@@ -104,11 +102,12 @@
     (set-buffer-multibyte nil)
     (let ((proc
 	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
-				host port)))
+				host port))
+	  (auth (car (auth-source-search :max 1 :port port :host name))))
       (set-process-sentinel proc (lambda (&rest _)))
       (with-temp-buffer
 	(set-buffer-multibyte nil)
-	(insert (format "%S\n" (eval-server--encrypt-form name port form)))
+	(insert (format "%S\n" (eval-server--encrypt-form auth form)))
 	(process-send-region proc (point-min) (point-max)))
       (while (and (process-live-p proc)
 		  (not (search-forward "\n" nil t)))
@@ -116,7 +115,7 @@
       (delete-process proc)
       (goto-char (point-min))
       (and (plusp (buffer-size))
-	   (read (current-buffer))))))
+	   (eval-server--decrypt-command auth (read (current-buffer)))))))
 
 (defun eval-server-pad (s length)
   "Pad string S to a modulo of LENGTH."
@@ -145,9 +144,8 @@ The encrypted result and the IV are returned."
      iv
      encrypted)))
 
-(defun eval-server--encrypt-form (server port form)
-  (let* ((auth (car (auth-source-search :max 1 :port port :host server)))
-	 (message 
+(defun eval-server--encrypt-form (auth form)
+  (let* ((message 
 	  (with-temp-buffer
 	    (set-buffer-multibyte nil)
 	    (insert (format "%S\n" form))
