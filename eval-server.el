@@ -73,7 +73,8 @@
 (defun eval-server-dispatch (proc auth command functions)
   (message "Got %s" command)
   (let ((command (eval-server--decrypt-command
-		  auth (car (read-from-string command)))))
+		  auth (ignore-errors
+			 (car (read-from-string command))))))
     (if (and command
 	     (consp command)
 	     (memq (car command) functions))
@@ -172,7 +173,8 @@ The encrypted result and the IV are returned."
 	 (when (> (length message) (plist-get command :length))
 	   (setq message (substring message (- (length message)
 					       (plist-get command :length)))))
-	 (car (read-from-string (car message))))))
+	 (ignore-errors
+	   (car (read-from-string (car message)))))))
 
 (provide 'eval-server)
 
