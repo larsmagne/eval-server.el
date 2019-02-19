@@ -1,0 +1,32 @@
+#!/bin/bash
+
+name="$1"
+host="$2"
+port="$3"
+form="$4"
+
+if [ "$form" = "" ]; then
+    echo "Usage: $0 <NAME> <HOST> <PORT> <FORM>"
+    exit
+fi
+
+iv=$(echo $RANDOM | md5sum | cut -d' ' -f1)
+iv=$(printf %16.16s $iv)
+ivhex=$(hexdump -e '"%X"' <<< "$iv")
+
+secret=$(grep "machine $name " ~/.authinfo | sed 's/^.*password //')
+secret=$(printf %32s "$secret")
+secrethex=$(xxd -c 256 -pu <<< "$secret")
+
+echo "'$secrethex' '$ivhex'"
+
+message=$(echo "$form" |\
+	      openssl enc -aes-256-cbc -nosalt -K $secrethex -iv $ivhex |\
+	      base64)
+
+length=${#form}
+ivbase=$(echo -n $iv | base64)
+
+echo "(:iv \"$ivbase\" :length $length :message \"$message\")" |\
+    nc "$host" "$port"
+
