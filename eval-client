@@ -7,19 +7,22 @@ form="$4"
 
 if [ "$form" = "" ]; then
     echo "Usage: $0 <NAME> <HOST> <PORT> <FORM>"
+    echo "Example: $0 lights stories 8409 \"(+ 3 4)\""
     exit
 fi
 
-iv=$(echo $RANDOM | md5sum | cut -d' ' -f1)
-iv=$(printf %16.16s $iv)
-ivhex=$(echo -n $iv | xxd -c 256 -pu)
+# Create a random IV that's 16 bytes long.
+iv=$(printf %16.16s $(echo $RANDOM | md5sum | cut -d' ' -f1))
 
-secret=$(grep "machine $name " ~/.authinfo | sed 's/^.*password //')
-secret=$(printf %32s "$secret")
-secrethex=$(echo -n "$secret" | xxd -c 256 -pu)
+# Get the secret from the ~/.authinfo file for this service and
+# front-pad it.
+secret=$(printf %32s $(grep "machine $name " ~/.authinfo | sed 's/^.*password //'))
 
+# Encrypt the form we're sending over.
 message=$(echo "$form" |\
-	      openssl enc -aes-256-cbc -nosalt -K $secrethex -iv $ivhex |\
+	      openssl enc -aes-256-cbc -nosalt\
+		      -K $(echo -n "$secret" | xxd -c 256 -pu)\
+		      -iv $(echo -n $iv | xxd -c 256 -pu) |\
 	      base64)
 
 length=${#form}
