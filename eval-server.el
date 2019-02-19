@@ -55,6 +55,26 @@
 	  eval-server-processes))
   (message "Listening on port %s" port))
 
+(defun eval-at (name host port form)
+  (with-temp-buffer
+    (set-buffer-multibyte nil)
+    (let ((proc
+	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
+				host port))
+	  (auth (car (auth-source-search :max 1 :port port :host name))))
+      (set-process-sentinel proc (lambda (&rest _)))
+      (with-temp-buffer
+	(set-buffer-multibyte nil)
+	(insert (format "%S\n" (eval-server--encrypt-form auth form)))
+	(process-send-region proc (point-min) (point-max)))
+      (while (and (process-live-p proc)
+		  (not (search-forward "\n" nil t)))
+	(accept-process-output proc 0 10))
+      (delete-process proc)
+      (goto-char (point-min))
+      (and (plusp (buffer-size))
+	   (eval-server--decrypt-command auth (read (current-buffer)))))))
+
 (defvar eval-server-clients nil)
 
 (defun eval-server-filter (proc auth string functions)
@@ -71,7 +91,6 @@
 	(setcdr client message)))))
 
 (defun eval-server-dispatch (proc auth command functions)
-  (message "Got %s" command)
   (let ((command (eval-server--decrypt-command
 		  auth (ignore-errors
 			 (car (read-from-string command))))))
@@ -96,26 +115,6 @@
 
 (defun eval-server-remove (proc)
   (setq eval-server-clients (assq-delete-all proc eval-server-clients)))
-
-(defun eval-at (name host port form)
-  (with-temp-buffer
-    (set-buffer-multibyte nil)
-    (let ((proc
-	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
-				host port))
-	  (auth (car (auth-source-search :max 1 :port port :host name))))
-      (set-process-sentinel proc (lambda (&rest _)))
-      (with-temp-buffer
-	(set-buffer-multibyte nil)
-	(insert (format "%S\n" (eval-server--encrypt-form auth form)))
-	(process-send-region proc (point-min) (point-max)))
-      (while (and (process-live-p proc)
-		  (not (search-forward "\n" nil t)))
-	(accept-process-output proc 0 10))
-      (delete-process proc)
-      (goto-char (point-min))
-      (and (plusp (buffer-size))
-	   (eval-server--decrypt-command auth (read (current-buffer)))))))
 
 (defun eval-server-pad (s length)
   "Pad string S to a modulo of LENGTH."
