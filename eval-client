@@ -22,11 +22,19 @@ secret=$(printf %32s $(grep "machine $name " ~/.authinfo | sed 's/^.*password //
 message=$(echo "$form" |\
 	      openssl enc -aes-256-cbc -nosalt\
 		      -K $(echo -n "$secret" | xxd -c 256 -pu)\
-		      -iv $(echo -n $iv | xxd -c 256 -pu) |\
-	      base64)
+		      -iv $(echo -n "$iv" | xxd -c 256 -pu) | base64)
 
 length=${#form}
 ivbase=$(echo -n $iv | base64)
 
-echo "(:iv \"$ivbase\" :length $length :message \"$message\")" |\
-    nc "$host" "$port"
+response=$(echo "(:iv \"$ivbase\" :length $length :message \"$message\")" |\
+    nc "$host" "$port")
+
+riv=$(echo $response | awk '{ print $2; }' | sed 's/"//g')
+rlength=$(echo $response | awk '{ print $4; }')
+rmessage=$(echo $response | awk '{ print $6; }' | sed 's/["\)]//g')
+
+echo -n "$rmessage" | base64 -d |\
+    openssl enc -d -nopad -aes-256-cbc -nosalt\
+	    -K $(echo -n "$secret" | xxd -c 256 -pu)\
+	    -iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu)
