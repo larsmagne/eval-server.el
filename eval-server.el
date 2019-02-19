@@ -30,29 +30,34 @@
 
 (defvar eval-server-processes nil)
 
-(defun eval-server-start (port functions)
+(defun eval-server-start (name port functions)
+  "Start server NAME listening to PORT accepting FUNCTIONS."
   (let ((server (assq port eval-server-processes)))
     (when server
       (delete-process (cdr server))
       (setq eval-server-processes (delq server eval-server-processes))))
-  (push (cons port
-	      (make-network-process :name "eval-server"
-				    :buffer (get-buffer-create "*eval-server*")
-				    :family 'ipv4
-				    :service port
-				    :host (system-name)
-				    :filter-multibyte nil
-				    :filter (lambda (proc string)
-					      (eval-server-filter
-					       proc string functions))
-				    :sentinel 'eval-server-sentinel
-				    :server t))
-	eval-server-processes)
+  (let ((auth (car (auth-source-search :max 1 :port port :host name))))
+    (unless auth
+      (error "Couldn't find encryption secret in ~/.authinfo"))
+    (push (cons port
+		(make-network-process
+		 :name name
+		 :buffer (get-buffer-create "*eval-server*")
+		 :family 'ipv4
+		 :service port
+		 :host (system-name)
+		 :filter-multibyte nil
+		 :filter (lambda (proc string)
+			   (eval-server-filter
+			    proc auth string functions))
+		 :sentinel 'eval-server-sentinel
+		 :server t))
+	  eval-server-processes))
   (message "Listening on port %s" port))
 
 (defvar eval-server-clients nil)
 
-(defun eval-server-filter (proc string functions)
+(defun eval-server-filter (proc auth string functions)
   (let ((client (assq proc eval-server-clients)))
     (unless client
       (setq client (cons proc ""))
@@ -60,19 +65,15 @@
     (let ((message (concat (cdr client) string)))
       (if (string-match "\n\\'" message)
 	  (progn
-	    (eval-server-dispatch proc message functions)
+	    (eval-server-dispatch proc auth message functions)
 	    (delete-process (car client))
 	    (eval-server-remove proc))
 	(setcdr client message)))))
 
-(defun eval-server-dispatch (proc message functions)
-  ;; Return the last partial line.
-  (if (not (string-match "\n\\'" message))
-      message
-    (eval-server-dispatch-1 proc message functions)))
-
-(defun eval-server-dispatch-1 (proc command functions)
-  (let ((command (ignore-errors (car (read-from-string command)))))
+(defun eval-server-dispatch (proc auth command functions)
+  (message "Got %s" command)
+  (let ((command (eval-server--decrypt-command
+		  auth (car (read-from-string command)))))
     (if (and command
 	     (consp command)
 	     (memq (car command) functions))
@@ -97,7 +98,7 @@
 (defun eval-server-remove (proc)
   (setq eval-server-clients (assq-delete-all proc eval-server-clients)))
 
-(defun eval-at (host port form)
+(defun eval-at (name host port form)
   (with-temp-buffer
     (set-buffer-multibyte nil)
     (let ((proc
@@ -106,7 +107,7 @@
       (set-process-sentinel proc (lambda (&rest _)))
       (with-temp-buffer
 	(set-buffer-multibyte nil)
-	(insert (format "%S\n" form))
+	(insert (format "%S\n" (eval-server--encrypt-form name port form)))
 	(process-send-region proc (point-min) (point-max)))
       (while (and (process-live-p proc)
 		  (not (search-forward "\n" nil t)))
@@ -156,6 +157,22 @@ The encrypted result and the IV are returned."
     (list :iv (base64-encode-string (cadr encrypted))
 	  :length (length message)
 	  :message (base64-encode-string (car encrypted)))))
+
+(defun eval-server--decrypt-command (auth command)
+  (and (plist-get command :iv)
+       (plist-get command :length)
+       (plist-get command :message)
+       (let ((message
+	      (eval-server--decrypt
+	       (base64-decode-string (plist-get command :message))
+	       (funcall (plist-get auth :secret))
+	       'AES-256-CBC
+	       (base64-decode-string (plist-get command :iv)))))
+	 ;; Chop off the front padding.
+	 (when (> (length message) (plist-get command :length))
+	   (setq message (substring message (- (length message)
+					       (plist-get command :length)))))
+	 (car (read-from-string (car message))))))
 
 (provide 'eval-server)
 
