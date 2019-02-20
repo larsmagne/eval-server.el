@@ -161,12 +161,10 @@ The encrypted result and the IV are returned."
 	  (eval-server--encrypt
 	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
     (list :iv (base64-encode-string (cadr encrypted))
-	  :length (length message)
 	  :message (base64-encode-string (car encrypted)))))
 
 (defun eval-server--decrypt-command (auth command)
   (and (plist-get command :iv)
-       (plist-get command :length)
        (plist-get command :message)
        (let ((message
 	      (car
