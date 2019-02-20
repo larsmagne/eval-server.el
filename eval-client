@@ -27,7 +27,7 @@ message=$(echo "$form" |\
 ivbase=$(echo -n $iv | base64)
 
 # Send the message to the eval server.
-response=$(echo "(:iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
+response=$(echo "(:cipher AES-256-CBC :iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
 
 # Parse the plist we got back.
 declare -A pvalue

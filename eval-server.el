@@ -178,21 +178,24 @@ The encrypted result and the IV are returned."
 	 (encrypted
 	  (eval-server--encrypt
 	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
-    (list :iv (base64-encode-string (cadr encrypted))
+    (list :cipher 'AES-256-CBC
+	  :iv (base64-encode-string (cadr encrypted))
 	  :message (base64-encode-string (car encrypted)))))
 
 (defun eval-server--decrypt-command (auth command)
-  (and (plist-get command :iv)
-       (plist-get command :message)
-       (let ((message
-	      (car
-	       (eval-server--decrypt
-		(base64-decode-string (plist-get command :message))
-		(funcall (plist-get auth :secret))
-		'AES-256-CBC
-		(base64-decode-string (plist-get command :iv))))))
-	 (ignore-errors
-	   (car (read-from-string (eval-server--pkcs7-unpad message)))))))
+  (when (and (plist-get command :iv)
+	     (plist-get command :message))
+    (if (not (eq (plist-get command :cipher) 'AES-256-CBC))
+	(format "Invalid cipher %s" (plist-get command :cipher))
+      (let ((message
+	     (car
+	      (eval-server--decrypt
+	       (base64-decode-string (plist-get command :message))
+	       (funcall (plist-get auth :secret))
+	       'AES-256-CBC
+	       (base64-decode-string (plist-get command :iv))))))
+	(ignore-errors
+	  (car (read-from-string (eval-server--pkcs7-unpad message))))))))
 
 (provide 'eval-server)
 
