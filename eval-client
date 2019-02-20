@@ -26,12 +26,29 @@ message=$(echo "$form" |\
 
 ivbase=$(echo -n $iv | base64)
 
-response=$(echo "(:iv \"$ivbase\" :message \"$message\")" |\
-    nc "$host" "$port")
+# Send the message to the eval server.
+response=$(echo "(:iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
 
-riv=$(echo $response | awk '{ print $2; }' | sed 's/"//g')
-rmessage=$(echo $response | awk '{ print $4; }' | sed 's/["\)]//g')
+# Parse the plist we got back.
+declare -A pvalue
 
+parse_plist() {
+    declare -a pl=$1
+    pvalue=()
+    local i=0
+    while [[ i -lt ${#pl[@]} ]]
+    do
+        pvalue[${pl[ i ]}]=${pl[ i+1 ]}
+        i=$(( i + 2 ))
+    done
+}
+
+parse_plist "$response"
+
+riv=${pvalue[:iv]}
+rmessage=${pvalue[:message]}
+
+# Decrypt the message we got back.
 echo -n "$rmessage" | base64 -d |\
     openssl enc -d -aes-256-cbc -nosalt\
 	    -K $(echo -n "$secret" | xxd -c 256 -pu)\
