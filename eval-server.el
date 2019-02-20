@@ -85,8 +85,13 @@ store, which may be ~/.authinfo."
 	(accept-process-output proc 0 10))
       (delete-process proc)
       (goto-char (point-min))
-      (and (plusp (buffer-size))
-	   (eval-server--decrypt-command auth (read (current-buffer)))))))
+      (when (plusp (buffer-size))
+	(let* ((command (read (current-buffer)))
+	       (response
+		(eval-server--decrypt-command auth command)))
+	  (if (plist-get command :error)
+	      (error "%s" response)
+	    response))))))
 
 (defvar eval-server--clients nil)
 
@@ -107,23 +112,39 @@ store, which may be ~/.authinfo."
 	(setcdr client message)))))
 
 (defun eval-server--dispatch (proc auth command functions)
-  (let ((command (eval-server--decrypt-command
-		  auth (ignore-errors
-			 (car (read-from-string command))))))
-    (eval-server--reply
-     proc auth 
-     (if (and command
-	      (consp command)
-	      (memq (car command) functions))
-	 (ignore-errors
-	   (apply #'funcall command))
-       (format "Invalid command %s" command)))
+  (when-let ((encrypted (condition-case err
+			    (car (read-from-string command))
+			  (error
+			   (eval-server--reply proc auth nil err)
+			   nil))))
+    (let ((form (eval-server--decrypt-command auth encrypted)))
+      (cond
+       ((null form)
+	(eval-server--reply proc auth nil "No command given from client"))
+       ((not (consp form))
+	(eval-server--reply
+	 proc auth nil
+	 (format "Invalid non-form from client: %S" form)))
+       ((not (memq (car form) functions))
+	(eval-server--reply
+	 proc auth nil
+	 (format "Non-allowed command from client: %s" (car form))))
+       (t
+	(let* ((success t)
+	       (value
+		(condition-case err
+		    (apply #'funcall form)
+		  (error
+		   (eval-server--reply proc auth nil err)
+		   (setq success nil)))))
+	  (when success
+	    (eval-server--reply proc auth value))))))
     (process-send-eof proc)))
 
-(defun eval-server--reply (proc auth form)
+(defun eval-server--reply (proc auth form &optional error)
   (process-send-string
    proc
-   (format "%S\n" (eval-server--encrypt-form auth form))))
+   (format "%S\n" (eval-server--encrypt-form auth form error))))
 
 (defun eval-server--sentinel (proc message)
   (when (equal message "connection broken by remote peer\n")
@@ -169,22 +190,26 @@ The encrypted result and the IV are returned."
      iv
      encrypted)))
 
-(defun eval-server--encrypt-form (auth form)
+(defun eval-server--encrypt-form (auth form &optional error)
+  "Encrypt FORM according to AUTH.
+If ERROR, encrypt that instead."
   (let* ((message 
 	  (with-temp-buffer
 	    (set-buffer-multibyte nil)
-	    (insert (format "%S\n" form))
+	    (insert (format "%S\n" (or error form)))
 	    (buffer-string)))
 	 (encrypted
 	  (eval-server--encrypt
 	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
     (list :cipher 'AES-256-CBC
 	  :iv (base64-encode-string (cadr encrypted))
-	  :message (base64-encode-string (car encrypted)))))
+	  (if error :error :message)
+	  (base64-encode-string (car encrypted)))))
 
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
-	     (plist-get command :message))
+	     (or (plist-get command :error)
+		 (plist-get command :message)))
     ;; If we start supporting other ciphers in the future, we would
     ;; probably refactor the en/decryption code somewhat.
     (if (not (eq (plist-get command :cipher) 'AES-256-CBC))
@@ -192,7 +217,9 @@ The encrypted result and the IV are returned."
       (let ((message
 	     (car
 	      (eval-server--decrypt
-	       (base64-decode-string (plist-get command :message))
+	       (base64-decode-string
+		(or (plist-get command :error)
+		    (plist-get command :message)))
 	       (funcall (plist-get auth :secret))
 	       'AES-256-CBC
 	       (base64-decode-string (plist-get command :iv))))))
