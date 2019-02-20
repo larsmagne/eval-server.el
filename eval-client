@@ -47,6 +47,22 @@ parse_plist "$response"
 
 riv=${pvalue[:iv]}
 rmessage=${pvalue[:message]}
+rcipher=${pvalue[:cipher]}
+rerror=${pvalue[:error]}
+
+if [ "$rcipher" != "AES-256-CBC" ]; then
+    echo "Error: Got wrong cipher in response from server: $rcipher"
+    exit
+fi
+
+if [ "$rerror" != "" ]; then
+    echo "Error: Got error message from server:"
+    echo -n "$rerror" | base64 -d |\
+	openssl enc -d -aes-256-cbc -nosalt\
+		-K $(echo -n "$secret" | xxd -c 256 -pu)\
+		-iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu)
+    exit
+fi
 
 # Decrypt the message we got back.
 echo -n "$rmessage" | base64 -d |\
