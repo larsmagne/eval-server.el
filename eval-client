@@ -12,8 +12,7 @@ if [ "$form" = "" ]; then
 fi
 
 # Create a random IV that's 16 bytes long.
-iv=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | cut -c1-16)
-echo $iv
+iv=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | cut -c1-32)
 
 # Get the secret from the ~/.authinfo file for this service and
 # front-pad it.
@@ -23,9 +22,9 @@ secret=$(printf %32s $(grep "machine $name " ~/.authinfo | sed 's/^.*password //
 message=$(echo "$form" |\
 	      openssl enc -aes-256-cbc -nosalt\
 		      -K $(echo -n "$secret" | xxd -c 256 -pu)\
-		      -iv $(echo -n "$iv" | xxd -c 256 -pu) | base64)
+		      -iv $iv | base64)
 
-ivbase=$(echo -n $iv | base64)
+ivbase=$(echo -n $iv | xxd -r -pu | base64)
 
 # Send the message to the eval server.
 response=$(echo "(:cipher AES-256-CBC :iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
