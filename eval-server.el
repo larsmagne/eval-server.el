@@ -90,7 +90,9 @@ store, which may be ~/.authinfo."
 	       (response
 		(eval-server--decrypt-command auth command)))
 	  (if (plist-get command :error)
-	      (error "%s" response)
+	      (signal (or (plist-get command :signal)
+			  'error)
+		      (format "%s" response))
 	    response))))))
 
 (defvar eval-server--clients nil)
@@ -135,16 +137,17 @@ store, which may be ~/.authinfo."
 		(condition-case err
 		    (apply #'funcall form)
 		  (error
-		   (eval-server--reply proc auth nil err)
+		   (eval-server--reply proc auth nil
+				       (cdr err) (car err))
 		   (setq success nil)))))
 	  (when success
 	    (eval-server--reply proc auth value))))))
     (process-send-eof proc)))
 
-(defun eval-server--reply (proc auth form &optional error)
+(defun eval-server--reply (proc auth form &optional error signal)
   (process-send-string
    proc
-   (format "%S\n" (eval-server--encrypt-form auth form error))))
+   (format "%S\n" (eval-server--encrypt-form auth form error signal))))
 
 (defun eval-server--sentinel (proc message)
   (when (equal message "connection broken by remote peer\n")
@@ -190,7 +193,7 @@ The encrypted result and the IV are returned."
      iv
      encrypted)))
 
-(defun eval-server--encrypt-form (auth form &optional error)
+(defun eval-server--encrypt-form (auth form &optional error signal)
   "Encrypt FORM according to AUTH.
 If ERROR, encrypt that instead."
   (let* ((message 
@@ -201,10 +204,13 @@ If ERROR, encrypt that instead."
 	 (encrypted
 	  (eval-server--encrypt
 	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
-    (list :cipher 'AES-256-CBC
-	  :iv (base64-encode-string (cadr encrypted))
-	  (if error :error :message)
-	  (base64-encode-string (car encrypted)))))
+    (nconc
+     (list :cipher 'AES-256-CBC
+	   :iv (base64-encode-string (cadr encrypted))
+	   (if error :error :message)
+	   (base64-encode-string (car encrypted)))
+     (and signal
+	  (list :signal signal)))))
 
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
