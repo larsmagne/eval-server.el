@@ -185,6 +185,8 @@ The encrypted result and the IV are returned."
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
 	     (plist-get command :message))
+    ;; If we start supporting other ciphers in the future, we would
+    ;; probably refactor the en/decryption code somewhat.
     (if (not (eq (plist-get command :cipher) 'AES-256-CBC))
 	(format "Invalid cipher %s" (plist-get command :cipher))
       (let ((message
