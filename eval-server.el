@@ -131,7 +131,15 @@ The encrypted result and the IV are returned."
      cipher
      (eval-server-pad secret (plist-get cdata :cipher-keysize))
      (list 'iv-auto (plist-get cdata :cipher-ivsize))
-     (eval-server-pad message (plist-get cdata :cipher-keysize)))))
+     (eval-server--pkcs7-pad message (plist-get cdata :cipher-blocksize)))))
+
+(defun eval-server--pkcs7-pad (string length)
+  (let ((pad (- length (mod (length string) length))))
+    (concat string (make-string pad pad))))
+
+(defun eval-server--pkcs7-unpad (string)
+  (substring string 0 (- (length string)
+			 (aref string (1- (length string))))))
 
 (defun eval-server--decrypt (encrypted secret cipher iv)
   (let ((cdata (cdr (assq cipher (gnutls-ciphers)))))
@@ -161,17 +169,14 @@ The encrypted result and the IV are returned."
        (plist-get command :length)
        (plist-get command :message)
        (let ((message
-	      (eval-server--decrypt
-	       (base64-decode-string (plist-get command :message))
-	       (funcall (plist-get auth :secret))
-	       'AES-256-CBC
-	       (base64-decode-string (plist-get command :iv)))))
-	 ;; Chop off the front padding.
-	 (when (> (length message) (plist-get command :length))
-	   (setq message (substring message (- (length message)
-					       (plist-get command :length)))))
+	      (car
+	       (eval-server--decrypt
+		(base64-decode-string (plist-get command :message))
+		(funcall (plist-get auth :secret))
+		'AES-256-CBC
+		(base64-decode-string (plist-get command :iv))))))
 	 (ignore-errors
-	   (car (read-from-string (car message)))))))
+	   (car (read-from-string (eval-server--pkcs7-unpad message)))))))
 
 (provide 'eval-server)
 
