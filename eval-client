@@ -22,9 +22,9 @@ secret=$(printf %32s $(grep "machine $name " ~/.authinfo | sed 's/^.*password //
 
 # Encrypt the form we're sending over.
 message=$(echo "$form" |\
-	      openssl enc -aes-256-cbc -nosalt\
+	      openssl enc -a -aes-256-cbc -nosalt\
 		      -K $(echo -n "$secret" | xxd -c 256 -pu)\
-		      -iv $iv | base64)
+		      -iv $iv)
 
 ivbase=$(echo -n $iv | xxd -r -pu | base64)
 
