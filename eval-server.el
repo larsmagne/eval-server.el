@@ -34,6 +34,39 @@
 ;; ~/.authinfo:
 ;; machine lights port 8710 password secret
 
+;; Description of the protocol between client and server:
+;;
+;; The protocol is sexp-based; it's a plist that looks like this:
+;;
+;; (:iv "1m687rP6n8Ch7VfNu0joEw=="
+;;  :cipher AES-256-CBC
+;;  :message "iFfFOl/sMxLb6ExwOuxFvsnvU1L1RNp4uarw1PHSR6M=")
+;;
+;; :message is encrypted using the cipher named, and the :iv is the
+;; usual intialisation vector (i.e., a random number used as a kind of
+;; salt).
+;;
+;; All data is base64-encoded to help with avoiding binary data loss.
+;;
+;; The server should respond with the same cipher as the client
+;; requested, and if it doesn't support that, an error is returned.
+;; Speaking of which, if there's an error, :message will not be
+;; present, but instead there will be an
+;;
+;; :error "iFfFOl/sMxLb6ExwOuxFvsnvU1L1RNp4uarw1PHSR6M="
+;;
+;; present in the response (which is encrypted the same way as the
+;; message would have been).
+;;
+;; Additionally, if the error happened during the dispatch phase of
+;; the server (i.e., when actually evalling the form the client sent
+;; over), a
+;;
+;; :signal wrong-type-argument
+;;
+;; (or the like) will be present that says what Emacs Lisp type the
+;; error was.
+
 ;;; Code:
 
 (defvar eval-server--processes nil)
