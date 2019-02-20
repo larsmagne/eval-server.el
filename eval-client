@@ -12,7 +12,8 @@ if [ "$form" = "" ]; then
 fi
 
 # Create a random IV that's 16 bytes long.
-iv=$(printf %16.16s $(dd if=/dev/urandom bs=1 count=16 2>/dev/null | md5sum | cut -d' ' -f1))
+iv=$(dd if=/dev/urandom bs=1 count=16 2>/dev/null | md5sum | cut -c1-16)
+echo $iv
 
 # Get the secret from the ~/.authinfo file for this service and
 # front-pad it.
