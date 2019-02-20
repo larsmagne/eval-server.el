@@ -24,7 +24,7 @@
 ;; Put the following in your .emacs:
 
 ;; (push "~/src/eval-server.el" load-path)
-;; (autoload 'eval-server-start "eval-server" nil t)
+;; (autoload 'start-eval-server "eval-server" nil t)
 
 ;; To test:
 
@@ -74,7 +74,10 @@
 (defun start-eval-server (name port functions)
   "Start server NAME listening to PORT accepting FUNCTIONS.
 
-If a server is already listening to PORT, it is deleted first."
+If a server is already listening to PORT, it is deleted first.
+
+If NAME is nil, the server expects the data to be \"encrypted\"
+with the passphrase \"nil\"."
   (let ((server (assq port eval-server--processes)))
     (when server
       (delete-process (cdr server))
@@ -101,13 +104,15 @@ If a server is already listening to PORT, it is deleted first."
 (defun eval-at (name host port form)
   "Connect to HOST:PORT and eval FORM there.
 NAME is used to find the encryption password from your password
-store, which may be ~/.authinfo."
+store, which may be ~/.authinfo.  If NAME is nil, the data is
+obfuscated with the passphrase \"nil\"."
   (with-temp-buffer
     (set-buffer-multibyte nil)
     (let ((proc
 	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
 				host port))
-	  (auth (car (auth-source-search :max 1 :port port :host name))))
+	  (auth (and name
+		     (car (auth-source-search :max 1 :port port :host name)))))
       ;; Ignore any signals.
       (set-process-sentinel proc (lambda (&rest _)))
       (process-send-string
@@ -236,7 +241,11 @@ If ERROR, encrypt that instead."
 	    (buffer-string)))
 	 (encrypted
 	  (eval-server--encrypt
-	   message (funcall (plist-get auth :secret)) 'AES-256-CBC)))
+	   message
+	   (if auth
+	       (funcall (plist-get auth :secret))
+	     "nil")
+	   'AES-256-CBC)))
     (nconc
      (list :cipher 'AES-256-CBC
 	   :iv (base64-encode-string (cadr encrypted))
@@ -259,7 +268,9 @@ If ERROR, encrypt that instead."
 	       (base64-decode-string
 		(or (plist-get command :error)
 		    (plist-get command :message)))
-	       (funcall (plist-get auth :secret))
+	       (if auth
+		   (funcall (plist-get auth :secret))
+		 "nil")
 	       'AES-256-CBC
 	       (base64-decode-string (plist-get command :iv))))))
 	(ignore-errors
