@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 name="$1"
 host="$2"
 port="$3"
