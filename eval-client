@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 name="$1"
 host="$2"
 port="$3"
@@ -36,6 +34,11 @@ ivbase=$(echo -n $iv | xxd -r -pu | base64)
 # Send the message to the eval server.
 response=$(echo "(:cipher AES-256-CBC :iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
 
+if [ "$response" = "" ]; then
+    echo "Got an empty reponse back from $host:$port"
+    exit
+fi
+
 # Parse the plist we got back.
 declare -A pvalue
 
@@ -58,7 +61,7 @@ rcipher=${pvalue[:cipher]}
 rerror=${pvalue[:error]}
 
 if [ "$rcipher" != "AES-256-CBC" ]; then
-    echo "Error: Got wrong cipher in response from server: $rcipher"
+    echo "Error: Got wrong cipher in response from server: '$rcipher'"
     exit
 fi
 
