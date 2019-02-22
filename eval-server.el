@@ -91,7 +91,7 @@ with the passphrase \"nil\"."
 		 :buffer (get-buffer-create " *eval-server*")
 		 :family 'ipv4
 		 :service port
-		 :host (system-name)
+		 :host "0.0.0.0"
 		 :filter-multibyte nil
 		 :filter (lambda (proc string)
 			   (eval-server--filter
