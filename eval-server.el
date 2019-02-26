@@ -276,6 +276,8 @@ If ERROR, encrypt that instead."
     (cond
      ((not (eq (plist-get command :mac) 'HMAC-SHA256))
       (format "Invalid MAC %s" (plist-get command :mac)))
+     ((not (plist-get command :hmac))
+      "No HMAC")
      ((not (eval-server--verify-hmac auth command))
       "Invalid HMAC")
      ((not (eq (plist-get command :cipher) 'AES-256-CBC))
