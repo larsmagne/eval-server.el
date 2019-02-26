@@ -40,6 +40,8 @@
 ;;
 ;; (:iv "1m687rP6n8Ch7VfNu0joEw=="
 ;;  :cipher AES-256-CBC
+;;  :mac HMAC-SHA256
+;;  :hmac "/svdj3fQHlzSUm8tdf74L8TnPVUzXiC9tEy5gfFSZ5E="
 ;;  :message "iFfFOl/sMxLb6ExwOuxFvsnvU1L1RNp4uarw1PHSR6M=")
 ;;
 ;; :message is encrypted using the cipher named, and the :iv is the
