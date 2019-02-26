@@ -71,6 +71,9 @@
 
 ;;; Code:
 
+(defvar eval-server-debug nil
+  "If non-nil, record all communication in the \"*eval-server debug*\" buffer.")
+
 (defvar eval-server--processes nil)
 
 (defun start-eval-server (name port functions)
@@ -159,7 +162,9 @@ obfuscated with the passphrase \"nil\"."
 			  (error
 			   (eval-server--reply proc auth nil err)
 			   nil))))
+    (eval-server--debug encrypted)
     (let ((form (eval-server--decrypt-command auth encrypted)))
+      (eval-server--debug form)
       (cond
        ((null form)
 	(eval-server--reply proc auth nil "No command given from client"))
@@ -185,6 +190,7 @@ obfuscated with the passphrase \"nil\"."
     (process-send-eof proc)))
 
 (defun eval-server--reply (proc auth form &optional error signal)
+  (eval-server--debug form)
   (process-send-string
    proc
    (format "%S\n" (eval-server--encrypt-form auth form error signal))))
@@ -263,7 +269,6 @@ If ERROR, encrypt that instead."
 
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
-	     (plist-get command :hmac)
 	     (or (plist-get command :error)
 		 (plist-get command :message)))
     ;; If we start supporting other ciphers in the future, we would
@@ -326,6 +331,15 @@ If ERROR, encrypt that instead."
 	      (base64-decode-string (plist-get command :message)))
 	    (base64-decode-string (plist-get command :iv))))
    (base64-decode-string (plist-get command :hmac))))			     
+
+(defun eval-server--debug (form)
+  (when eval-server-debug
+    (with-current-buffer (get-buffer-create "*eval-server debug*")
+      (goto-char (point-max))
+      (insert (format-time-string "%FT%T")
+	      " "
+	      (format "%S" form)
+	      "\n"))))
 
 (provide 'eval-server)
 
