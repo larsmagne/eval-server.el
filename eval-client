@@ -18,21 +18,25 @@ iv=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | cut -c1-32)
 # front-pad it.  If name is an empty string, obfuscate with the string
 # "nil" instead.
 if [ "$name" != "" ]; then
-    secret=$(printf %32s $(grep "machine $name " ~/.authinfo | sed 's/^.*password //'))
+    secret=$(grep "machine $name " ~/.authinfo | sed 's/^.*password //')
 else
-    secret=$(printf %32s "nil")
+    secret="nil"
 fi
+
+psecret=$(printf %32s "$secret")
 
 # Encrypt the form we're sending over.
 message=$(echo "$form" |\
 	      openssl enc -a -aes-256-cbc -nosalt\
-		      -K $(echo -n "$secret" | xxd -c 256 -pu)\
+		      -K $(echo -n "$psecret" | xxd -c 256 -pu)\
 		      -iv $iv)
 
 ivbase=$(echo -n $iv | xxd -r -pu | base64)
 
+hmacbase=$((echo $message | base64 -d; echo -n $iv | xxd -r -pu) | openssl dgst -binary -sha256 -hmac "$secret" | base64)
+
 # Send the message to the eval server.
-response=$(echo "(:cipher AES-256-CBC :iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
+response=$(echo "(:cipher AES-256-CBC :mac HMAC-SHA256 :hmac \"$hmacbase\" :iv \"$ivbase\" :message \"$message\")" | nc "$host" "$port")
 
 if [ "$response" = "" ]; then
     echo "Got an empty reponse back from $host:$port"
@@ -69,7 +73,7 @@ if [ "$rerror" != "" ]; then
     echo "Error: Got error message from server:"
     echo -n "$rerror" | base64 -d |\
 	openssl enc -d -aes-256-cbc -nosalt\
-		-K $(echo -n "$secret" | xxd -c 256 -pu)\
+		-K $(echo -n "$psecret" | xxd -c 256 -pu)\
 		-iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu)
     exit
 fi
@@ -77,5 +81,5 @@ fi
 # Decrypt the message we got back.
 echo -n "$rmessage" | base64 -d |\
     openssl enc -d -aes-256-cbc -nosalt\
-	    -K $(echo -n "$secret" | xxd -c 256 -pu)\
+	    -K $(echo -n "$psecret" | xxd -c 256 -pu)\
 	    -iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu)
