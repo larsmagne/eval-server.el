@@ -68,6 +68,13 @@
 ;;
 ;; (or the like) will be present that says what Emacs Lisp type the
 ;; error was.
+;;
+;; Encryption and verification notes:
+;;
+;; The data is padded with PKCS#7 and then encrypted with AES-256-CBC.
+;; A HMAC-SHA256 of the encrypted data concatenated with the IV is
+;; sent over and checked before doing anything with the encrypted
+;; data.
 
 ;;; Code:
 
