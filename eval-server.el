@@ -249,6 +249,11 @@ If ERROR, encrypt that instead."
     (nconc
      (list :cipher 'AES-256-CBC
 	   :iv (base64-encode-string (cadr encrypted))
+	   :mac 'HMAC-SHA256
+	   :hmac (base64-encode-string
+		  (eval-server--hmac
+		   (funcall (plist-get auth :secret))
+		   (concat (car encrypted) (cadr encrypted))))
 	   (if error :error :message)
 	   (base64-encode-string (car encrypted)))
      (and signal
@@ -256,12 +261,19 @@ If ERROR, encrypt that instead."
 
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
+	     (plist-get command :hmac)
 	     (or (plist-get command :error)
 		 (plist-get command :message)))
     ;; If we start supporting other ciphers in the future, we would
     ;; probably refactor the en/decryption code somewhat.
-    (if (not (eq (plist-get command :cipher) 'AES-256-CBC))
-	(format "Invalid cipher %s" (plist-get command :cipher))
+    (cond
+     ((not (eq (plist-get command :mac) 'HMAC-SHA256))
+      (format "Invalid MAC %s" (plist-get command :mac)))
+     ((not (eval-server--verify-hmac auth command))
+      "Invalid HMAC")
+     ((not (eq (plist-get command :cipher) 'AES-256-CBC))
+      (format "Invalid cipher %s" (plist-get command :cipher)))
+     (t
       (let ((message
 	     (car
 	      (eval-server--decrypt
@@ -274,7 +286,44 @@ If ERROR, encrypt that instead."
 	       'AES-256-CBC
 	       (base64-decode-string (plist-get command :iv))))))
 	(ignore-errors
-	  (car (read-from-string (eval-server--pkcs7-unpad message))))))))
+	  (car (read-from-string (eval-server--pkcs7-unpad message)))))))))
+
+(defun eval-server--hmac (key message)
+  (let ((block-size 64))
+    (when (> (length key) block-size)
+      (setq key (sha1 key nil nil t)))
+    (when (< (length key) block-size)
+      (setq key (concat key (make-string (- block-size (length key)) 0))))
+    (let ((o-key-pad (eval-server--xor (copy-sequence key) #x5c))
+	  (i-key-pad (eval-server--xor (copy-sequence key) #x36)))
+      (secure-hash 'sha256
+		   (concat o-key-pad
+			   (secure-hash 'sha256
+					(concat i-key-pad message) nil nil t))
+		   nil nil t))))
+
+(defun eval-server--xor (string xor)
+  (dotimes (i (length string))
+    (setf (aref string i)
+	  (logxor (aref string i) xor)))
+  string)
+
+(defun eval-server--digify (string)
+  (mapconcat
+   #'identity
+   (loop for char across string
+	 collect (format "%0x" char))
+   ""))
+
+(defun eval-server--verify-hmac (auth command)
+  (equal
+   (eval-server--hmac
+    (funcall (plist-get auth :secret))
+    (concat (if (plist-get command :error)
+		(base64-decode-string (plist-get command :error))
+	      (base64-decode-string (plist-get command :message)))
+	    (base64-decode-string (plist-get command :iv))))
+   (base64-decode-string (plist-get command :hmac))))			     
 
 (provide 'eval-server)
 
