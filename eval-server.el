@@ -76,6 +76,8 @@
 ;; sent over and checked before doing anything with the encrypted
 ;; data.
 
+;; Todo: Settle on some scheme for replay mitigation.
+
 ;;; Code:
 
 (defvar eval-server-debug nil
