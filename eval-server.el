@@ -307,6 +307,7 @@ If ERROR, encrypt that instead."
 	  (car (read-from-string (eval-server--pkcs7-unpad message)))))))))
 
 (defun eval-server--hmac (key message)
+  "Compute the HMAC for MESSAGE with KEY."
   (let ((block-size 64))
     (when (> (length key) block-size)
       (setq key (sha1 key nil nil t)))
@@ -321,12 +322,14 @@ If ERROR, encrypt that instead."
 		   nil nil t))))
 
 (defun eval-server--xor (string xor)
+  "Perform 'exclusive or' every byte in STRING with XOR."
   (dotimes (i (length string))
     (setf (aref string i)
 	  (logxor (aref string i) xor)))
   string)
 
 (defun eval-server--digify (string)
+  "Convert STRING to a two-hex-digits-per-byte form."
   (mapconcat
    #'identity
    (loop for char across string
