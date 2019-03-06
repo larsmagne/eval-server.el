@@ -75,6 +75,17 @@
 ;; A HMAC-SHA256 of the encrypted data concatenated with the IV is
 ;; sent over and checked before doing anything with the encrypted
 ;; data.
+;;
+;; To prevent replay attacks on the server, the client includes a
+;; timestamp that's checked.  If it's too old, or the server has seen
+;; a package with the same IV over a certain time period, the package
+;; is rejected.
+;;
+;; To prevent a MITM of the response (i.e., sending an old response in
+;; response to a new query), the client includes a nonce that's
+;; returned verbatim by the server.
+;;
+;; Both the timestamp and the nonce are part of the encrypted message.
 
 ;;; Code:
 
