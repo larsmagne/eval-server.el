@@ -24,12 +24,14 @@ else
 fi
 
 psecret=$(printf %32s "$secret")
+stamp=$(date "+%Y-%m-%dT%H:%M:%S%z")
 
 # Encrypt the form we're sending over.
-message=$(echo "(:data $form)" |\
-	      openssl enc -a -aes-256-cbc -nosalt\
+message=$(echo "(:stamp \"$stamp\" :data $form)" |\
+	      openssl enc -aes-256-cbc -nosalt\
 		      -K $(echo -n "$psecret" | xxd -c 256 -pu)\
-		      -iv $iv)
+		      -iv $iv |\
+	      base64 | sed ':a;N;$!ba;s/\n//g')
 
 ivbase=$(echo -n $iv | xxd -r -pu | base64)
 
