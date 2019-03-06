@@ -89,7 +89,7 @@
 
 ;;; Code:
 
-(defvar eval-server-debug nil
+(defvar eval-server-debug t
   "If non-nil, record all communication in the \"*eval-server debug*\" buffer.")
 
 (defvar eval-server--processes nil)
@@ -189,7 +189,7 @@ obfuscated with the passphrase \"nil\"."
     (eval-server--debug encrypted)
     (let* ((message (eval-server--decrypt-command auth encrypted))
 	   (form (plist-get message :data)))
-      (eval-server--debug form)
+      (eval-server--debug message)
       (cond
        ((null form)
 	(eval-server--reply proc auth nil "No command given from client"))
@@ -341,6 +341,7 @@ If ERROR, encrypt that instead."
 	      (ignore-errors
 		(car (read-from-string
 		      (eval-server--pkcs7-unpad string))))))
+	(eval-server--debug message)
 	(cond
 	 ((not (consp message))
 	  (format "Invalid message format"))
