@@ -89,6 +89,8 @@
 
 ;;; Code:
 
+(require 'parse-time)
+
 (defvar eval-server-debug t
   "If non-nil, record all communication in the \"*eval-server debug*\" buffer.")
 
