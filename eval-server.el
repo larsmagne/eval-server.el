@@ -321,7 +321,7 @@ If ERROR, encrypt that instead."
 	 ((not (plist-get message :data))
 	  (format "No data in message"))
 	 ((eval-server--replayed-message-p
-	   (plist-get message :stam) (plist-get command :iv))
+	   (plist-get message :stamp) (plist-get command :iv))
 	  (format "Seen message before"))
 	 (t
 	  (plist-get message :data))))))))
