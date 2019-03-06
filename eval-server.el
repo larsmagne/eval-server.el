@@ -145,11 +145,11 @@ obfuscated with the passphrase \"nil\"."
 	    (signal (or (plist-get command :signal)
 			'error)
 		    (format "%s" response)))
-	   ((not (equal (getf response :nonce) nonce))
+	   ((not (equal (plist-get response :nonce) nonce))
 	    (error "Got wrong nonce back from server: %s"
-		   (getf response :nonce)))
+		   (plist-get response :nonce)))
 	   (t
-	    (getf response :data))))))))
+	    (plist-get response :data))))))))
 
 (defvar eval-server--clients nil)
 
