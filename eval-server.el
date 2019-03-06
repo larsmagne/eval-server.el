@@ -91,7 +91,7 @@
 
 (require 'parse-time)
 
-(defvar eval-server-debug t
+(defvar eval-server-debug nil
   "If non-nil, record all communication in the \"*eval-server debug*\" buffer.")
 
 (defvar eval-server--processes nil)
