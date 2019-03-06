@@ -124,11 +124,12 @@ obfuscated with the passphrase \"nil\"."
 	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
 				host port))
 	  (auth (and name
-		     (car (auth-source-search :max 1 :port port :host name)))))
+		     (car (auth-source-search :max 1 :port port :host name))))
+	  (nonce (eval-server--nonce)))
       ;; Ignore any signals.
       (set-process-sentinel proc (lambda (&rest _)))
       (process-send-string
-       proc (format "%S\n" (eval-server--encrypt-form auth form)))
+       proc (format "%S\n" (eval-server--encrypt-form auth form nil nil nonce)))
       ;; Wait until we get a full response back.
       (while (and (process-live-p proc)
 		  (not (search-forward "\n" nil t)))
@@ -139,11 +140,16 @@ obfuscated with the passphrase \"nil\"."
 	(let* ((command (read (current-buffer)))
 	       (response
 		(eval-server--decrypt-command auth command)))
-	  (if (plist-get command :error)
-	      (signal (or (plist-get command :signal)
-			  'error)
-		      (format "%s" response))
-	    response))))))
+	  (cond
+	   ((plist-get command :error)
+	    (signal (or (plist-get command :signal)
+			'error)
+		    (format "%s" response)))
+	   ((not (equal (getf response :nonce) nonce))
+	    (error "Got wrong nonce back from server: %s"
+		   (getf response :nonce)))
+	   (t
+	    (getf response :data))))))))
 
 (defvar eval-server--clients nil)
 
@@ -170,7 +176,8 @@ obfuscated with the passphrase \"nil\"."
 			   (eval-server--reply proc auth nil err)
 			   nil))))
     (eval-server--debug encrypted)
-    (let ((form (eval-server--decrypt-command auth encrypted)))
+    (let* ((message (eval-server--decrypt-command auth encrypted))
+	   (form (plist-get message :data)))
       (eval-server--debug form)
       (cond
        ((null form)
@@ -190,17 +197,19 @@ obfuscated with the passphrase \"nil\"."
 		    (apply #'funcall form)
 		  (error
 		   (eval-server--reply proc auth nil
-				       (cdr err) (car err))
+				       (cdr err) (car err)
+				       (plist-get message :nonce))
 		   (setq success nil)))))
 	  (when success
-	    (eval-server--reply proc auth value))))))
+	    (eval-server--reply proc auth value
+				nil nil (plist-get message :nonce)))))))
     (process-send-eof proc)))
 
-(defun eval-server--reply (proc auth form &optional error signal)
+(defun eval-server--reply (proc auth form &optional error signal nonce)
   (eval-server--debug form)
   (process-send-string
    proc
-   (format "%S\n" (eval-server--encrypt-form auth form error signal))))
+   (format "%S\n" (eval-server--encrypt-form auth form error signal nonce))))
 
 (defun eval-server--sentinel (proc message)
   (when (equal message "connection broken by remote peer\n")
@@ -246,7 +255,7 @@ The encrypted result and the IV are returned."
      iv
      encrypted)))
 
-(defun eval-server--encrypt-form (auth form &optional error signal)
+(defun eval-server--encrypt-form (auth form &optional error signal nonce)
   "Encrypt FORM according to AUTH.
 If ERROR, encrypt that instead."
   (let* ((message 
@@ -259,6 +268,7 @@ If ERROR, encrypt that instead."
 				    ;; also timestamp the data
 				    ;; to avoid replay attacks.
 				    (list :stamp (format-time-string "%FT%T%z")
+					  :nonce nonce
 					  :data form)
 				  (list :data form)))))
 	    (buffer-string)))
@@ -282,6 +292,10 @@ If ERROR, encrypt that instead."
      (and signal
 	  (list :signal signal)))))
 
+(defun eval-server--nonce ()
+  "Return a random string."
+  (format "%s" (random most-positive-fixnum)))
+
 (defun eval-server--decrypt-command (auth command)
   (when (and (plist-get command :iv)
 	     (or (plist-get command :error)
@@ -293,7 +307,8 @@ If ERROR, encrypt that instead."
       (format "Invalid MAC %s" (plist-get command :mac)))
      ((not (plist-get command :hmac))
       "No HMAC")
-     ((not (stringp (plist-get command :message)))
+     ((not (stringp (or (plist-get command :error)
+			(plist-get command :message))))
       "Invalid message")
      ((not (eval-server--verify-hmac auth command))
       "Invalid HMAC")
@@ -324,7 +339,7 @@ If ERROR, encrypt that instead."
 	   (plist-get message :stamp) (plist-get command :iv))
 	  (format "Seen message before"))
 	 (t
-	  (plist-get message :data))))))))
+	  message)))))))
 
 (defun eval-server--replayed-message-p (stamp iv)
   "Check whether we've seen message before based on STAMP and IV.

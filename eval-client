@@ -13,6 +13,7 @@ fi
 
 # Create a random IV that's 16 bytes long.
 iv=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | cut -c1-32)
+nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | cut -c1-32)
 
 # Get the secret from the ~/.authinfo file for this service and
 # front-pad it.  If name is an empty string, obfuscate with the string
@@ -27,7 +28,7 @@ psecret=$(printf %32s "$secret")
 stamp=$(date "+%Y-%m-%dT%H:%M:%S%z")
 
 # Encrypt the form we're sending over.
-message=$(echo "(:stamp \"$stamp\" :data $form)" |\
+message=$(echo "(:stamp \"$stamp\" :nonce \"$nonce\" :data $form)" |\
 	      openssl enc -aes-256-cbc -nosalt\
 		      -K $(echo -n "$psecret" | xxd -c 256 -pu)\
 		      -iv $iv |\
@@ -87,4 +88,11 @@ data=$(echo -n "$rmessage" | base64 -d |\
 		   -iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu))
 
 parse_plist "$data"
+rnonce=${pvalue[:nonce]}
+
+if [ "$nonce" != "$rnonce" ]; then
+    echo "Got wrong nonce back from server: $rnonce" >&2
+    exit
+fi
+
 echo ${pvalue[:data]}
