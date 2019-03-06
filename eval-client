@@ -26,7 +26,7 @@ fi
 psecret=$(printf %32s "$secret")
 
 # Encrypt the form we're sending over.
-message=$(echo "$form" |\
+message=$(echo "(:data $form)" |\
 	      openssl enc -a -aes-256-cbc -nosalt\
 		      -K $(echo -n "$psecret" | xxd -c 256 -pu)\
 		      -iv $iv)
@@ -79,7 +79,10 @@ if [ "$rerror" != "" ]; then
 fi
 
 # Decrypt the message we got back.
-echo -n "$rmessage" | base64 -d |\
-    openssl enc -d -aes-256-cbc -nosalt\
-	    -K $(echo -n "$psecret" | xxd -c 256 -pu)\
-	    -iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu)
+data=$(echo -n "$rmessage" | base64 -d |\
+	   openssl enc -d -aes-256-cbc -nosalt\
+		   -K $(echo -n "$psecret" | xxd -c 256 -pu)\
+		   -iv $(echo -n "$riv" | base64 -d | xxd -c 256 -pu))
+
+parse_plist "$data"
+echo ${pvalue[:data]}

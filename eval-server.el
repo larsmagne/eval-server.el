@@ -76,8 +76,6 @@
 ;; sent over and checked before doing anything with the encrypted
 ;; data.
 
-;; Todo: Settle on some scheme for replay mitigation.
-
 ;;; Code:
 
 (defvar eval-server-debug nil
@@ -254,7 +252,15 @@ If ERROR, encrypt that instead."
   (let* ((message 
 	  (with-temp-buffer
 	    (set-buffer-multibyte nil)
-	    (insert (format "%S\n" (or error form)))
+	    (insert (format "%S\n"
+			    (or error
+				(if auth
+				    ;; If we use auth, then we
+				    ;; also timestamp the data
+				    ;; to avoid replay attacks.
+				    (list :stamp (format-time-string "%FT%T%z")
+					  :data form)
+				  (list :data form)))))
 	    (buffer-string)))
 	 (encrypted
 	  (eval-server--encrypt
@@ -287,24 +293,74 @@ If ERROR, encrypt that instead."
       (format "Invalid MAC %s" (plist-get command :mac)))
      ((not (plist-get command :hmac))
       "No HMAC")
+     ((not (stringp (plist-get command :message)))
+      "Invalid message")
      ((not (eval-server--verify-hmac auth command))
       "Invalid HMAC")
      ((not (eq (plist-get command :cipher) 'AES-256-CBC))
       (format "Invalid cipher %s" (plist-get command :cipher)))
      (t
-      (let ((message
-	     (car
-	      (eval-server--decrypt
-	       (base64-decode-string
-		(or (plist-get command :error)
-		    (plist-get command :message)))
-	       (if auth
-		   (funcall (plist-get auth :secret))
-		 "nil")
-	       'AES-256-CBC
-	       (base64-decode-string (plist-get command :iv))))))
-	(ignore-errors
-	  (car (read-from-string (eval-server--pkcs7-unpad message)))))))))
+      (let* ((string
+	      (car
+	       (eval-server--decrypt
+		(base64-decode-string
+		 (or (plist-get command :error)
+		     (plist-get command :message)))
+		(if auth
+		    (funcall (plist-get auth :secret))
+		  "nil")
+		'AES-256-CBC
+		(base64-decode-string (plist-get command :iv)))))
+	     (message
+	      (ignore-errors
+		(car (read-from-string
+		      (eval-server--pkcs7-unpad string))))))
+	(cond
+	 ((not (consp message))
+	  (format "Invalid message format"))
+	 ((not (plist-get message :data))
+	  (format "No data in message"))
+	 ((eval-server--replayed-message-p
+	   (plist-get message :stam) (plist-get command :iv))
+	  (format "Seen message before"))
+	 (t
+	  (plist-get message :data))))))))
+
+(defun eval-server--replayed-message-p (stamp iv)
+  "Check whether we've seen message before based on STAMP and IV.
+If STAMP (an ISO8601 timestamp) is too far in the past, or IV is
+in the IV cache, this function returns non-nil.
+
+If STAMP is nil, this function always returns nil."
+  (if (not stamp)
+      nil
+    (let ((time (ignore-errors (parse-iso8601-time-string stamp))))
+      (cond
+       ;; Buggy times are rejected.
+       ((not time) t)
+       ;; Too old.
+       ((> (- (float-time) (float-time time)) 10) t)
+       ((eval-server--seen-iv-p iv) t)
+       (t nil)))))
+
+(defvar eval-server--iv-table (make-hash-table :test #'equal))
+
+(defun eval-server--seen-iv-p (iv)
+  (prog1
+      (gethash iv eval-server--iv-table)
+    (eval-server--prune-iv-table)
+    (setf (gethash iv eval-server--iv-table) (float-time))))
+
+(defun eval-server--prune-iv-table ()
+  "Remove IVs that are old from the cache."
+  (let ((old nil)
+	(now (float-time)))
+    (maphash (lambda (iv time)
+	       (when (> (- now time) (* 60 60))
+		 (push iv old)))
+	     eval-server--iv-table)
+    (dolist (iv old)
+      (remhash iv eval-server--iv-table))))
 
 (defun eval-server--hmac (key message)
   "Compute the HMAC for MESSAGE with KEY."
