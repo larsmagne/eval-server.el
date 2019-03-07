@@ -347,8 +347,6 @@ If ERROR, encrypt that instead."
 	(cond
 	 ((not (consp message))
 	  (format "Invalid message format"))
-	 ((not (plist-get message :data))
-	  (format "No data in message"))
 	 ((eval-server--replayed-message-p
 	   (plist-get message :stamp) (plist-get command :iv))
 	  (format "Seen message before"))
