@@ -228,10 +228,9 @@ obfuscated with the passphrase \"nil\"."
   (eval-server--debug form)
   (process-send-string
    proc
-   (format "%S\n"
-	   (if auth
-	       (eval-server--encrypt-form auth form error signal nonce)
-	     form))))
+   (if auth
+       (format "%S\n" (eval-server--encrypt-form auth form error signal nonce))
+     (base64-encode-string (format "%s\n" form)))))
 
 (defun eval-server--sentinel (proc message)
   (when (equal message "connection broken by remote peer\n")
