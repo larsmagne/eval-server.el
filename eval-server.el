@@ -107,12 +107,14 @@ with the passphrase \"nil\"."
     (when server
       (delete-process (cdr server))
       (setq eval-server--processes (delq server eval-server--processes))))
-  (let ((auth (car (auth-source-search :max 1 :port port :host name))))
-    (unless auth
+  (let ((auth (and name
+		   (car (auth-source-search :max 1 :port port :host name)))))
+    (when (and name
+	       (null auth))
       (error "Couldn't find encryption secret in ~/.authinfo"))
     (push (cons port
 		(make-network-process
-		 :name name
+		 :name (or name "anon")
 		 :buffer (get-buffer-create " *eval-server*")
 		 :family 'ipv4
 		 :service port
@@ -189,8 +191,12 @@ obfuscated with the passphrase \"nil\"."
 			   (eval-server--reply proc auth nil err)
 			   nil))))
     (eval-server--debug encrypted)
-    (let* ((message (eval-server--decrypt-command auth encrypted))
-	   (form (plist-get message :data)))
+    (let* (message form)
+      (if (not auth)
+	  (setq message encrypted
+		form encrypted)
+	(setq message (eval-server--decrypt-command auth encrypted)
+	      form (plist-get message :data)))
       (eval-server--debug message)
       (cond
        ((null form)
@@ -222,7 +228,10 @@ obfuscated with the passphrase \"nil\"."
   (eval-server--debug form)
   (process-send-string
    proc
-   (format "%S\n" (eval-server--encrypt-form auth form error signal nonce))))
+   (format "%S\n"
+	   (if auth
+	       (eval-server--encrypt-form auth form error signal nonce)
+	     form))))
 
 (defun eval-server--sentinel (proc message)
   (when (equal message "connection broken by remote peer\n")
