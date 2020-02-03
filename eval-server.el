@@ -186,7 +186,10 @@ obfuscated with the passphrase \"nil\"."
 
 (defun eval-server--dispatch (proc auth command functions)
   (when-let ((encrypted (condition-case err
-			    (car (read-from-string command))
+			    (car (read-from-string
+				  (if (not auth)
+				      (base64-decode-string command)
+				    command)))
 			  (error
 			   (eval-server--reply proc auth nil err)
 			   nil))))
