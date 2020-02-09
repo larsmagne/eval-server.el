@@ -193,7 +193,6 @@ obfuscated with the passphrase \"nil\"."
 			  (error
 			   (eval-server--reply proc auth nil err)
 			   nil))))
-    (eval-server--debug encrypted)
     (let* (message form)
       (if (not auth)
 	  (setq message encrypted
@@ -443,11 +442,12 @@ If STAMP is nil, this function always returns nil."
 (defun eval-server--debug (form)
   (when eval-server-debug
     (with-current-buffer (get-buffer-create "*eval-server debug*")
-      (goto-char (point-max))
-      (insert (format-time-string "%FT%T")
-	      " "
-	      (format "%S" form)
-	      "\n"))))
+      (save-excursion
+	(goto-char (point-max))
+	(insert (format-time-string "%FT%T")
+		" "
+		(format "%S" form)
+		"\n")))))
 
 (provide 'eval-server)
 
