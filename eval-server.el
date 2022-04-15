@@ -425,8 +425,8 @@ If STAMP is nil, this function always returns nil."
   "Convert STRING to a two-hex-digits-per-byte form."
   (mapconcat
    #'identity
-   (loop for char across string
-	 collect (format "%0x" char))
+   (cl-loop for char across string
+	    collect (format "%0x" char))
    ""))
 
 (defun eval-server--verify-hmac (auth command)
