@@ -462,7 +462,7 @@ Doesn't wait for a response and always returns nil."
 	  (start-process (format "eval-at %s:%s" host port) nil
 			 "eval-client"
 			 name host (format "%s" port)
-			 form))
+			 (format "%S" form)))
     nil))
 
 (provide 'eval-server)
