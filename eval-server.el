@@ -449,6 +449,22 @@ If STAMP is nil, this function always returns nil."
 		(format "%S" form)
 		"\n")))))
 
+(defvar eval-server--asyncs (make-hash-table :test #'equal))
+
+(defun eval-at-async (name host port form)
+  "Connect to HOST:PORT and eval FORM there.
+Doesn't wait for a response and always returns nil."
+  (let ((key (cons host port)))
+    ;; Kill any pending processes.
+    (when-let ((proc (gethash key eval-server--asyncs)))
+      (delete-process proc))
+    (setf (gethash key eval-server--asyncs)
+	  (start-process (format "eval-at %s:%s" host port) nil
+			 "eval-client"
+			 name host (format "%s" port)
+			 form))
+    nil))
+
 (provide 'eval-server)
 
 ;;; eval-server.el ends here
