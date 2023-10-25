@@ -151,7 +151,7 @@ obfuscated with the passphrase \"nil\"."
 	(accept-process-output proc 0 10))
       (delete-process proc)
       (goto-char (point-min))
-      (when (plusp (buffer-size))
+      (when (cl-plusp (buffer-size))
 	(let* ((command (read (current-buffer)))
 	       (response
 		(eval-server--decrypt-command auth command)))
@@ -415,7 +415,7 @@ If STAMP is nil, this function always returns nil."
 		   nil nil t))))
 
 (defun eval-server--xor (string xor)
-  "Perform 'exclusive or' every byte in STRING with XOR."
+  "Perform \"exclusive or\" every byte in STRING with XOR."
   (dotimes (i (length string))
     (setf (aref string i)
 	  (logxor (aref string i) xor)))
