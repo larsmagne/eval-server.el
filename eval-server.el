@@ -455,6 +455,7 @@ If STAMP is nil, this function always returns nil."
 		" "
 		(format "%S" form)
 		"\n")
+	;; Limit the buffer length.
 	(when (numberp eval-server-debug)
 	  (forward-line (- eval-server-debug))
 	  (beginning-of-line)
