@@ -92,7 +92,8 @@
 (require 'parse-time)
 
 (defvar eval-server-debug nil
-  "If non-nil, record all communication in the \"*eval-server debug*\" buffer.")
+  "If non-nil, record all communication in the \"*eval-server debug*\" buffer.
+If a number, limit the number of lines to that number.")
 
 (defvar eval-server--processes nil)
 
@@ -447,12 +448,17 @@ If STAMP is nil, this function always returns nil."
 (defun eval-server--debug (form)
   (when eval-server-debug
     (with-current-buffer (get-buffer-create "*eval-server debug*")
+      (buffer-disable-undo)
       (save-excursion
 	(goto-char (point-max))
 	(insert (format-time-string "%FT%T")
 		" "
 		(format "%S" form)
-		"\n")))))
+		"\n")
+	(when (numberp eval-server-debug)
+	  (forward-line (- eval-server-debug))
+	  (beginning-of-line)
+	  (delete-region (point) (point-min)))))))
 
 (defvar eval-server--asyncs (make-hash-table :test #'equal))
 
