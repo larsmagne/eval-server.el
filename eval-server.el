@@ -495,6 +495,31 @@ Doesn't wait for a response and always returns nil."
 			 (format "%S" form)))
     nil))
 
+(defun eval-at-callback (name host port form callback)
+  "Connect to HOST:PORT and eval FORM there.
+Call CALLBACK with the result."
+  (with-current-buffer (generate-new-buffer " *eval-at*")
+    (set-buffer-multibyte nil)
+    (let ((process
+	   (start-process (format "eval-at %s:%s" host port)
+			  (current-buffer)
+			  (expand-file-name
+			   "eval-client"
+			   (file-name-directory
+			    (find-library-name "eval-server.el")))
+			  name host (format "%s" port)
+			  (format "%S" form))))
+      (set-process-sentinel
+       process
+       (lambda (proc status)
+	 (debug status)
+	 (with-current-buffer (process-buffer proc)
+	   (goto-char (point-min))
+	   (debug (current-buffer))
+	   (funcall callback (buffer-string))
+	   (kill-buffer (current-buffer)))))
+      nil)))
+
 (provide 'eval-server)
 
 ;;; eval-server.el ends here
