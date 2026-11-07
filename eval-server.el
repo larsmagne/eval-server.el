@@ -500,25 +500,25 @@ Doesn't wait for a response and always returns nil."
 Call CALLBACK with the result."
   (with-current-buffer (generate-new-buffer " *eval-at*")
     (set-buffer-multibyte nil)
-    (let ((process
-	   (start-process (format "eval-at %s:%s" host port)
-			  (current-buffer)
-			  (expand-file-name
-			   "eval-client"
-			   (file-name-directory
-			    (find-library-name "eval-server.el")))
-			  name host (format "%s" port)
-			  (format "%S" form))))
+    (let* ((tmp (make-temp-name "/tmp/eval-at"))
+	   (process
+	    (start-process (format "eval-at %s:%s" host port)
+			   nil
+			   (expand-file-name
+			    "eval-client"
+			    (file-name-directory
+			     (find-library-name "eval-server.el")))
+			   name host (format "%s" port)
+			   (format "%S" form)
+			   tmp)))
       (set-process-sentinel
        process
-       (lambda (proc status)
-	 (debug status)
-	 (with-current-buffer (process-buffer proc)
-	   (goto-char (point-min))
-	   (debug (current-buffer))
-	   (funcall callback (buffer-string))
-	   (kill-buffer (current-buffer)))))
-      nil)))
+       (lambda (_proc _status)
+	 (with-temp-buffer
+	   (insert-file-contents tmp)
+	   (delete-file tmp)
+	   (funcall callback (buffer-string))))))
+    nil))
 
 (provide 'eval-server)
 
