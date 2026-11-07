@@ -129,12 +129,15 @@ with the passphrase \"nil\"."
 	  eval-server--processes))
   (message "Server %s listening on port %s" name port))
 
-(defun eval-at (name host port form)
+(defun eval-at (name host port form &optional callback)
   "Connect to HOST:PORT and eval FORM there.
 NAME is used to find the encryption password from your password
 store, which may be ~/.authinfo.  If NAME is nil, the data is
-obfuscated with the passphrase \"nil\"."
-  (with-temp-buffer
+obfuscated with the passphrase \"nil\".
+
+If CALLBACK, this function is asynchronous and CALLBACK will be
+called once the data is ready."
+  (with-current-buffer (generate-new-buffer " *eval-at*")
     (set-buffer-multibyte nil)
     (let ((proc
 	   (open-network-stream (format "eval-at-%s" host) (current-buffer)
@@ -143,28 +146,43 @@ obfuscated with the passphrase \"nil\"."
 		     (car (auth-source-search :max 1 :port port :host name))))
 	  (nonce (eval-server--nonce)))
       ;; Ignore any signals.
-      (set-process-sentinel proc (lambda (&rest _)))
+      (set-process-sentinel
+       proc
+       (if callback
+	   (lambda (proc _)
+	     (eval-at--process-results proc auth nonce callback))
+	 (lambda (&rest _))))
       (process-send-string
        proc (format "%S\n" (eval-server--encrypt-form auth form nil nil nonce)))
-      ;; Wait until we get a full response back.
-      (while (and (process-live-p proc)
-		  (not (search-forward "\n" nil t)))
-	(accept-process-output proc 0 10))
-      (delete-process proc)
-      (goto-char (point-min))
-      (when (cl-plusp (buffer-size))
-	(let* ((command (read (current-buffer)))
-	       (response
-		(eval-server--decrypt-command auth command)))
-	  (cond
-	   ((plist-get command :error)
-	    (signal (or (plist-get command :signal)
-			'error)
-		    (format "%s" response)))
-	   ((not (equal (plist-get response :nonce) nonce))
-	    (error "Got wrong nonce back from server: %s"
-		   (plist-get response :nonce)))
-	   (t
+      (unless callback
+	;; Wait until we get a full response back.
+	(while (and (process-live-p proc)
+		    (not (search-forward "\n" nil t)))
+	  (accept-process-output proc 0 10))
+	(delete-process proc)
+	(eval-at--process-results proc auth nonce)))))
+
+(defun eval-at--process-results (proc auth nonce &optional callback)
+  (with-current-buffer (process-buffer proc)
+    (goto-char (point-min))
+    (when (cl-plusp (buffer-size))
+      (let* ((command (read (current-buffer)))
+	     (response
+	      (eval-server--decrypt-command auth command)))
+	(kill-buffer (current-buffer))
+	(cond
+	 ((stringp response)
+	  (error "Got invalid result from server: %s" response))
+	 ((plist-get command :error)
+	  (signal (or (plist-get command :signal)
+		      'error)
+		  (format "%s" response)))
+	 ((not (equal (plist-get response :nonce) nonce))
+	  (error "Got wrong nonce back from server: %s"
+		 (plist-get response :nonce)))
+	 (t
+	  (if callback
+	      (funcall callback (plist-get response :data))
 	    (plist-get response :data))))))))
 
 (defvar eval-server--clients nil)
