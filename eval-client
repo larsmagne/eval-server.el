@@ -4,6 +4,7 @@ name="$1"
 host="$2"
 port="$3"
 form="$4"
+output_file="$5"
 
 if [ "$form" = "" ]; then
     echo "Usage: $0 <NAME> <HOST> <PORT> <FORM>"
@@ -95,4 +96,8 @@ if [ "$nonce" != "$rnonce" ]; then
     exit
 fi
 
-echo ${pvalue[:data]}
+if [ "$output_file" != "" ]; then
+    echo "${pvalue[:data]}" > "$output_file"
+else
+    echo "${pvalue[:data]}"
+fi
